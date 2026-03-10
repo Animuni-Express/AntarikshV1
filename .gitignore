@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+build/
+dist/
+
+# Kaggle/Secrets
+kaggle.json
+.kaggle/
+.env
+
+# Project specific
+target_kernel_folder/kernel-metadata.json
