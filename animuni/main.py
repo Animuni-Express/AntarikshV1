@@ -5,6 +5,7 @@ from rich.console import Console
 from rich.prompt import Prompt, Confirm
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 from .config import AgentConfig, save_config, load_config
 from .utils import check_resources, get_local_agent_count
 from .orchestrator import Orchestrator
@@ -19,6 +20,19 @@ console = Console()
 
 # Technical Mono theme: emerald-green on black background
 THEME_STYLE = "bold spring_green3"
+
+ASCII_ART = """
+   ▄████████  ███▄▄▄▄      ▄█  ███▄▄▄▄    ███    █▄  ███▄▄▄▄   ▄█
+  ███    ███  ███▀▀▀██▄   ███  ███▀▀▀██▄  ███    ███ ███▀▀▀██▄ ███
+  ███    ███  ███   ███   ███▌ ███   ███  ███    ███ ███   ███ ███▌
+  ███    ███  ███   ███   ███▌ ███   ███  ███    ███ ███   ███ ███▌
+▀███████████  ███   ███   ███▌ ███   ███  ███    ███ ███   ███ ███▌
+  ███    ███  ███   ███   ███  ███   ███  ███    ███ ███   ███ ███
+  ███    ███  ███   ███   ███  ███   ███  ███    ███ ███   ███ ███
+  ███    █▀    ▀█   █▀    █▀    ▀█   █▀   ████████▀   ▀█   █▀  █▀
+
+         A N I M U N I   E X P R E S S   O R C H E S T R A T O R
+"""
 
 def version_callback(value: bool):
     if value:
@@ -36,6 +50,7 @@ def main(
     Animuni Express: A professional multi-agent orchestrator for resource-constrained systems.
     """
     if ctx.invoked_subcommand is None:
+        console.print(Text(ASCII_ART, style=THEME_STYLE))
         console.print(ctx.get_help())
 
 @app.command()
@@ -43,7 +58,8 @@ def setup():
     """
     Wizard to configure agents for Animuni Express.
     """
-    console.print(Panel("[bold]Animuni Express - Agent Setup Wizard[/bold]", style=THEME_STYLE))
+    console.print(Text(ASCII_ART, style=THEME_STYLE))
+    console.print(Panel("[bold]Agent Setup Wizard[/bold]", style=THEME_STYLE, border_style=THEME_STYLE))
 
     agents = load_config()
 
@@ -89,7 +105,7 @@ def list_agents():
         console.print("[yellow]No agents configured.[/yellow]")
         return
 
-    table = Table(title="Configured Agents", show_header=True, header_style=THEME_STYLE)
+    table = Table(title="Configured Agents", show_header=True, header_style=THEME_STYLE, border_style=THEME_STYLE)
     table.add_column("Name", style="cyan")
     table.add_column("Provider", style="white")
     table.add_column("Model", style="white")
@@ -100,7 +116,7 @@ def list_agents():
             a.name,
             a.provider,
             a.model,
-            "Yes" if a.is_primary else "No"
+            "✔" if a.is_primary else "✘"
         )
 
     console.print(table)
@@ -124,7 +140,8 @@ def remove(name: str):
 def run(
     task: str,
     primary: str = typer.Option(None, "--primary", "-p", help="Name of the agent to use as primary"),
-    model: str = typer.Option(None, "--model", "-m", help="Override the model for this run")
+    model: str = typer.Option(None, "--model", "-m", help="Override the model for this run"),
+    no_cache: bool = typer.Option(False, "--no-cache", help="Disable speed hack (response caching)")
 ):
     """
     Run a task using the configured agent swarm.
@@ -138,7 +155,7 @@ def run(
     local_count = get_local_agent_count(agents)
     check_resources(local_count)
 
-    console.print(Panel(f"Task: {task}", title="[bold]Antariksh Swarm[/bold]", border_style=THEME_STYLE, style=THEME_STYLE))
+    console.print(Panel(f"Task: [bold white]{task}[/bold white]", title="[bold]Antariksh Swarm Execution[/bold]", border_style=THEME_STYLE, style=THEME_STYLE))
 
     if primary:
         found = False
@@ -156,7 +173,7 @@ def run(
         for a in agents:
             a.model = model
 
-    orchestrator = Orchestrator(agents)
+    orchestrator = Orchestrator(agents, use_cache=not no_cache)
     asyncio.run(orchestrator.run_task(task))
 
 @app.command()
@@ -170,25 +187,24 @@ def test():
         return
 
     async def test_all():
-        table = Table(title="Agent Connectivity Test", show_header=True, header_style=THEME_STYLE)
+        table = Table(title="Agent Connectivity Test", show_header=True, header_style=THEME_STYLE, border_style=THEME_STYLE)
         table.add_column("Agent", style="cyan")
         table.add_column("Status", style="bold")
-        table.add_column("Response Time", style="magenta")
+        table.add_column("Latency", style="magenta")
 
         import time
         for agent_cfg in agents:
             interface = AgentInterface(agent_cfg)
             start_time = time.time()
             try:
-                # Use a very simple prompt to test connectivity
                 response = await interface.chat("Hello, response 'ok' if you hear me.")
                 duration = time.time() - start_time
                 if "Error" in response:
-                    table.add_row(agent_cfg.name, "[red]Failed[/red]", f"{duration:.2f}s")
+                    table.add_row(agent_cfg.name, "[red]Offline[/red]", f"{duration:.2f}s")
                 else:
                     table.add_row(agent_cfg.name, "[green]Online[/green]", f"{duration:.2f}s")
             except Exception as e:
-                table.add_row(agent_cfg.name, f"[red]Error: {str(e)}[/red]", "N/A")
+                table.add_row(agent_cfg.name, f"[red]Error[/red]", "N/A")
 
         console.print(table)
 
@@ -215,20 +231,20 @@ def chat(
         # Default to primary
         agent_cfg = next((a for a in agents if a.is_primary), agents[0])
 
-    console.print(Panel(f"Direct Chat with [bold]{agent_cfg.name}[/bold] ({agent_cfg.model})", style=THEME_STYLE))
+    console.print(Panel(f"Session: [bold]{agent_cfg.name}[/bold] | Model: [italic]{agent_cfg.model}[/italic]", border_style=THEME_STYLE, style=THEME_STYLE))
 
     interface = AgentInterface(agent_cfg)
 
     async def chat_loop():
         while True:
-            user_input = Prompt.ask("You", console=console)
+            user_input = Prompt.ask(f"[{THEME_STYLE}]User[/{THEME_STYLE}]", console=console)
             if user_input.lower() in ["exit", "quit"]:
                 break
 
-            with console.status(f"[{THEME_STYLE}]Thinking...[/{THEME_STYLE}]"):
+            with console.status(f"[{THEME_STYLE}]Swarm processing...[/{THEME_STYLE}]"):
                 response = await interface.chat(user_input)
 
-            console.print(Panel(response, title=agent_cfg.name, border_style=THEME_STYLE, style=THEME_STYLE))
+            console.print(Panel(response, title=f"[{THEME_STYLE}]{agent_cfg.name}[/{THEME_STYLE}]", border_style=THEME_STYLE))
 
     asyncio.run(chat_loop())
 
