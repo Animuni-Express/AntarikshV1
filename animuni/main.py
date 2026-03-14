@@ -1,5 +1,6 @@
 import typer
 import asyncio
+from typing import Optional
 from rich.console import Console
 from rich.prompt import Prompt, Confirm
 from rich.panel import Panel
@@ -9,14 +10,33 @@ from .utils import check_resources, get_local_agent_count
 from .orchestrator import Orchestrator
 from .agents import AgentInterface
 
-app = typer.Typer()
+__version__ = "0.1.0"
+
+app = typer.Typer(
+    add_completion=False,
+)
 console = Console()
 
 # Technical Mono theme: emerald-green on black background
-# Note: Rich styles can handle colors, but background is usually terminal controlled.
-# We will use "emerald" equivalent which is often "spring_green3" or similar in Rich,
-# or just "green" for high compatibility. Let's try "bold spring_green3"
 THEME_STYLE = "bold spring_green3"
+
+def version_callback(value: bool):
+    if value:
+        console.print(f"Animuni Express version: {__version__}")
+        raise typer.Exit()
+
+@app.callback(invoke_without_command=True)
+def main(
+    ctx: typer.Context,
+    version: Optional[bool] = typer.Option(
+        None, "--version", "-v", callback=version_callback, is_eager=True, help="Show version and exit."
+    ),
+):
+    """
+    Animuni Express: A professional multi-agent orchestrator for resource-constrained systems.
+    """
+    if ctx.invoked_subcommand is None:
+        console.print(ctx.get_help())
 
 @app.command()
 def setup():
@@ -57,7 +77,48 @@ def setup():
             break
 
     save_config(agents)
-    console.print(f"[{THEME_STYLE}]Configuration saved to agents.json[/{THEME_STYLE}]")
+    console.print(f"[{THEME_STYLE}]Configuration saved.[/{THEME_STYLE}]")
+
+@app.command()
+def list_agents():
+    """
+    List all configured agents.
+    """
+    agents = load_config()
+    if not agents:
+        console.print("[yellow]No agents configured.[/yellow]")
+        return
+
+    table = Table(title="Configured Agents", show_header=True, header_style=THEME_STYLE)
+    table.add_column("Name", style="cyan")
+    table.add_column("Provider", style="white")
+    table.add_column("Model", style="white")
+    table.add_column("Primary", style="bold green")
+
+    for a in agents:
+        table.add_row(
+            a.name,
+            a.provider,
+            a.model,
+            "Yes" if a.is_primary else "No"
+        )
+
+    console.print(table)
+
+@app.command()
+def remove(name: str):
+    """
+    Remove an agent by name.
+    """
+    agents = load_config()
+    new_agents = [a for a in agents if a.name != name]
+
+    if len(agents) == len(new_agents):
+        console.print(f"[red]Agent '{name}' not found.[/red]")
+        return
+
+    save_config(new_agents)
+    console.print(f"[{THEME_STYLE}]Agent '{name}' removed.[/{THEME_STYLE}]")
 
 @app.command()
 def run(
