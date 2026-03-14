@@ -1,15 +1,9 @@
-# Python
 __pycache__/
 *.py[cod]
 *$py.class
-.venv/
+.env
+agents.json
 build/
 dist/
-
-# Kaggle/Secrets
-kaggle.json
-.kaggle/
-.env
-
-# Project specific
-target_kernel_folder/kernel-metadata.json
+*.egg-info/
+.pytest_cache/
