@@ -1,0 +1,18 @@
+[
+    {
+        "name": "Test1",
+        "provider": "Local/Ollama",
+        "endpoint": "http://test",
+        "model": "llama3",
+        "api_key": null,
+        "is_primary": true
+    },
+    {
+        "name": "Test2",
+        "provider": "Remote/OpenRouter",
+        "endpoint": "http://test2",
+        "model": "llama3",
+        "api_key": "abc",
+        "is_primary": false
+    }
+]
