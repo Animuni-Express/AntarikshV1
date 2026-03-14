@@ -24,7 +24,7 @@ class Orchestrator:
 
         with Progress(
             SpinnerColumn(),
-            TextColumn("[progress.description]{task_description}"),
+            TextColumn("[progress.description]{task.description}"),
             console=console,
             transient=True
         ) as progress:

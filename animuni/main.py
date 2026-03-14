@@ -3,9 +3,11 @@ import asyncio
 from rich.console import Console
 from rich.prompt import Prompt, Confirm
 from rich.panel import Panel
+from rich.table import Table
 from .config import AgentConfig, save_config, load_config
 from .utils import check_resources, get_local_agent_count
 from .orchestrator import Orchestrator
+from .agents import AgentInterface
 
 app = typer.Typer()
 console = Console()
@@ -58,7 +60,11 @@ def setup():
     console.print(f"[{THEME_STYLE}]Configuration saved to agents.json[/{THEME_STYLE}]")
 
 @app.command()
-def run(task: str):
+def run(
+    task: str,
+    primary: str = typer.Option(None, "--primary", "-p", help="Name of the agent to use as primary"),
+    model: str = typer.Option(None, "--model", "-m", help="Override the model for this run")
+):
     """
     Run a task using the configured agent swarm.
     """
@@ -73,8 +79,97 @@ def run(task: str):
 
     console.print(Panel(f"Task: {task}", title="[bold]Antariksh Swarm[/bold]", border_style=THEME_STYLE, style=THEME_STYLE))
 
+    if primary:
+        found = False
+        for a in agents:
+            if a.name == primary:
+                a.is_primary = True
+                found = True
+            else:
+                a.is_primary = False
+        if not found:
+            console.print(f"[bold red]Primary agent '{primary}' not found.[/bold red]")
+            return
+
+    if model:
+        for a in agents:
+            a.model = model
+
     orchestrator = Orchestrator(agents)
     asyncio.run(orchestrator.run_task(task))
+
+@app.command()
+def test():
+    """
+    Test connectivity and status of all configured agents.
+    """
+    agents = load_config()
+    if not agents:
+        console.print("[bold red]No agents configured.[/bold red]")
+        return
+
+    async def test_all():
+        table = Table(title="Agent Connectivity Test", show_header=True, header_style=THEME_STYLE)
+        table.add_column("Agent", style="cyan")
+        table.add_column("Status", style="bold")
+        table.add_column("Response Time", style="magenta")
+
+        import time
+        for agent_cfg in agents:
+            interface = AgentInterface(agent_cfg)
+            start_time = time.time()
+            try:
+                # Use a very simple prompt to test connectivity
+                response = await interface.chat("Hello, response 'ok' if you hear me.")
+                duration = time.time() - start_time
+                if "Error" in response:
+                    table.add_row(agent_cfg.name, "[red]Failed[/red]", f"{duration:.2f}s")
+                else:
+                    table.add_row(agent_cfg.name, "[green]Online[/green]", f"{duration:.2f}s")
+            except Exception as e:
+                table.add_row(agent_cfg.name, f"[red]Error: {str(e)}[/red]", "N/A")
+
+        console.print(table)
+
+    asyncio.run(test_all())
+
+@app.command()
+def chat(
+    agent_name: str = typer.Option(None, "--agent", "-a", help="Name of the agent to chat with")
+):
+    """
+    Direct interactive chat with an agent for prompt testing.
+    """
+    agents = load_config()
+    if not agents:
+        console.print("[bold red]No agents configured.[/bold red]")
+        return
+
+    if agent_name:
+        agent_cfg = next((a for a in agents if a.name == agent_name), None)
+        if not agent_cfg:
+            console.print(f"[bold red]Agent '{agent_name}' not found.[/bold red]")
+            return
+    else:
+        # Default to primary
+        agent_cfg = next((a for a in agents if a.is_primary), agents[0])
+
+    console.print(Panel(f"Direct Chat with [bold]{agent_cfg.name}[/bold] ({agent_cfg.model})", style=THEME_STYLE))
+
+    interface = AgentInterface(agent_cfg)
+
+    async def chat_loop():
+        while True:
+            user_input = Prompt.ask("You", console=console)
+            if user_input.lower() in ["exit", "quit"]:
+                break
+
+            with console.status(f"[{THEME_STYLE}]Thinking...[/{THEME_STYLE}]"):
+                response = await interface.chat(user_input)
+
+            console.print(Panel(response, title=agent_cfg.name, border_style=THEME_STYLE, style=THEME_STYLE))
+
+    asyncio.run(chat_loop())
 
 if __name__ == "__main__":
     app()
